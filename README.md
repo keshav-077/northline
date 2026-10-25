@@ -65,15 +65,71 @@ None of these metrics is a volume to buy. Demand and the existing contract posit
 
 ## Architecture
 
+Read the diagram from top to bottom. The top half calls Elexon once and writes the snapshot. The bottom half is what a page view does. A desk request never calls Elexon.
+
 ```mermaid
-flowchart LR
-  elexon[Elexon stream API] --> ingest[Ingest CLI]
-  ingest --> snapshot[Gzipped snapshot]
-  snapshot --> api[FastAPI]
-  api --> desk[React desk]
+flowchart TB
+  subgraph src ["1 · Elexon BMRS, ingest only"]
+    direction LR
+    W["WINDFOR<br/>hourly forecast MW<br/>publishTime"]
+    F["FUELHH WIND<br/>half-hour average MW"]
+  end
+
+  subgraph ing ["2 · Ingest command"]
+    direction LR
+    C["client.py<br/>public stream<br/>retries, no API key"]
+    I["ingest.py<br/>one day per request<br/>coverage check"]
+  end
+
+  subgraph snap ["3 · Committed snapshot"]
+    direction LR
+    GZ["windfor.jsonl.gz<br/>19,272 rows"]
+    FA["fuelhh.jsonl.gz<br/>1,488 rows<br/>31 days × 48"]
+    M["manifest.json<br/>snapshot 8e87d9346bc99a87<br/>BMRS licence"]
+  end
+
+  subgraph boot ["4 · Process start, six evaluations"]
+    direction TB
+    L["store.py<br/>load gzip, check checksum"]
+    S["selection.py<br/>publishTime &lt;= cutoff<br/>one file, or latest hour<br/>a later file is reported, not scored"]
+    EV["evaluate.py<br/>mean of the two half-hours<br/>error = forecast minus actual<br/>missing, conflict, or above 50,000 MW excluded"]
+    K["metrics.py<br/>Decimal MAE, RMSE, bias, WAPE"]
+    MEM["Kept in memory<br/>09:20, 09:50, 15:30<br/>× one file and latest hour"]
+  end
+
+  subgraph view ["5 · Each page view"]
+    direction LR
+    UI["React desk<br/>date, cutoff, strategy"]
+    R["GET /api/v1/evaluation"]
+  end
+
+  TST["test_snapshot.py<br/>locks 744 hours, MAE 2,038.91<br/>and midnight: 15,834 vs 14,602 and 14,311"]
+
+  W --> C
+  F --> C
+  C --> I
+  I --> GZ
+  I --> FA
+  I --> M
+  GZ --> L
+  FA --> L
+  M --> L
+  L --> S --> EV --> K --> MEM
+  UI --> R --> MEM
+  MEM --> UI
+  MEM -.-> TST
+
+  classDef source fill:#e7f0ea,stroke:#1f4d3a,color:#1a1916
+  classDef built fill:#f3efe6,stroke:#5e5a53,color:#1a1916
+  classDef live fill:#fffcf8,stroke:#1a1916,color:#1a1916
+  classDef proof fill:#f8ece8,stroke:#9a4030,color:#1a1916
+  class W,F source
+  class C,I,GZ,FA,M built
+  class L,S,EV,K,MEM,UI,R live
+  class TST proof
 ```
 
-Dashboard requests read the snapshot. They do not call Elexon. If the snapshot is missing, `/api/v1/health` returns 503 and the desk shows an unavailable state. No synthetic series is substituted.
+If the snapshot is missing, `/api/v1/health` returns 503 and the desk shows an unavailable state. No synthetic series is substituted.
 
 - `GET /api/v1/health`
 - `GET /api/v1/meta`
