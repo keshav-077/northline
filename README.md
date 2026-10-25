@@ -1,12 +1,18 @@
 # Northline
 
-Historical day-ahead wind desk for a GB electricity supplier. For each purchase decision made on a London day in January 2026, it shows the national wind forecast that had already been published, the later half-hourly outturn, and the error.
+Historical day-ahead wind desk for a GB electricity supplier. For each purchase decision made on a London day in January 2026, it shows the national wind forecast that had already been published, the later half-hourly outturn, and the error. This is a replay of January 2026. It does not estimate demand, price, or a hedge volume.
 
-This is a replay of January 2026. It is not a live trading screen, and it does not estimate demand, price, or a hedge volume.
+**Live application:** [https://northline-ruby.vercel.app/](https://northline-ruby.vercel.app/)
+
+**Video:** [https://www.loom.com/share/9a1e2fbb126f40d29d22a99098b9784c](https://www.loom.com/share/9a1e2fbb126f40d29d22a99098b9784c)
+
+14 January decision, cutoff 09:20: [https://northline-ruby.vercel.app/?date=2026-01-14&cutoff=09:20](https://northline-ruby.vercel.app/?date=2026-01-14&cutoff=09:20)
+
+Hosted on Vercel. The page reads a committed Elexon snapshot. It does not call Elexon on each request.
 
 ## Result for the default rule
 
-Decision dates are 1–31 January 2026. Each decision buys the next delivery day. The default cutoff is 09:20 Europe/London, the EPEX SPOT GB 60-minute day-ahead gate. In this window that clock time is 09:20 UTC, and the latest eligible WINDFOR file is the 07:30 UTC run. The 09:30 run is excluded.
+Decision dates are 1–31 January 2026. Each decision buys the next delivery day. The default cutoff is 09:20 Europe/London, the EPEX SPOT GB 60-minute day-ahead gate. In January that is 09:20 UTC, so the latest eligible WINDFOR file is the 07:30 UTC run. The 09:30 run is excluded.
 
 From snapshot `8e87d9346bc99a87`, retrieved from Elexon at 2026-10-24T18:16:34Z:
 
@@ -19,153 +25,82 @@ From snapshot `8e87d9346bc99a87`, retrieved from Elexon at 2026-10-24T18:16:34Z:
 | WAPE | 18.07% |
 | Error p10 / p50 / p90 | −549.30 / +1,592.00 / +4,097.90 MW |
 
-Positive bias means the forecast overstated wind. On the worked example, decision 14 January for delivery 15 January, the 07:30 forecast’s hourly MAE and bias are both 1,041.83 MW and RMSE is 1,149.26 MW. Hour 00:00 is forecast 15,834 MW against half hours 14,602 and 14,311.
+Positive bias means the forecast overstated wind. On 14 January, for delivery on 15 January, the 07:30 forecast’s hourly MAE and bias are both 1,041.83 MW and RMSE is 1,149.26 MW. Hour 00:00 is forecast 15,834 MW against half hours 14,602 and 14,311. `backend/tests/test_snapshot.py` locks these figures.
 
-These figures are produced by the tests in `backend/tests/test_snapshot.py`. They describe this extract only.
+## Files and directories
 
-On the chart, the shaded band compares the hourly forecast with the mean of the two half-hourly actuals. The dark line is each half-hour and can sit on the other side of that hourly mean. WAPE is shown to two decimal places, so the January ratio 0.1807 reads 18.07%.
-
-## Live application
-
-The production image was checked on this machine on 24 October 2026. `docker run --rm -p 8000:8000 northline` returned snapshot `8e87d9346bc99a87` from `/api/v1/health`, and the 14 January decision at cutoff 09:20 used the 07:30 GMT vintage. A public URL is not recorded: the Vercel CLI was logged out, and `npx vercel deploy --temporary --yes` stopped with “No existing credentials found”.
-
-## Stack
-
-- Python 3.12, FastAPI, Pydantic v2, httpx
-- React 19, TypeScript, Vite, TanStack Query
-- Docker Compose for local development and a production image that serves the API and the built desk together
-
-## Data
-
-Contains BMRS data © Elexon Limited copyright and database right 2026.
-[BMRS data licence](https://www.elexon.co.uk/bsc/data/balancing-mechanism-reporting-agent/copyright-licence-bmrs-data/).
-
-The Insights API is public. These calls used no API key. Base URL: `https://data.elexon.co.uk/bmrs/api/v1`.
-
-- Actuals: `GET /datasets/FUELHH/stream` with `fuelType=WIND`. `generation` is average MW over the half hour. The delivery window 2 January–1 February 2026 returned 1,488 rows, 48 settlement periods a day, no duplicate periods.
-- Forecasts: `GET /datasets/WINDFOR/stream`, filtered by `publishTime`. Each value is one hourly MW figure for metered wind visible to NESO. There is no settlement period on the stream record.
-
-WINDFOR is hourly. FUELHH is half-hourly. The scored actual for an hour is the mean of the two half hours starting at that hour and 30 minutes later. The forecast is not copied onto 48 separate samples.
-
-The BMRS wind page lists eight publication clocks without a timezone. In this January extract the files are at 02:30, 04:30, 07:30, 09:30, 11:30, 15:30, 18:30 and 22:30 UTC. On 15 January the 11:30 file is replaced by one at 12:25 UTC. Selection uses `publishTime`, not the webpage clock.
-
-## Decision rule
-
-A decision on London date D procures delivery D+1. The eligible forecast satisfies `publishTime <= cutoff`. Nothing published later is used.
-
-- `09:20` is the default: EPEX SPOT GB 60-minute auction. The vintage is 07:30.
-- `09:50` is the Nord Pool N2EX gate stated as 09:50 GMT. The 09:30 file becomes eligible.
-- `15:30` is the EPEX GB 30-minute auction. A file stamped exactly 15:30 is included because the comparison is `<=`.
-
-The default strategy keeps one publication, the latest file at or before the cutoff, and does not fill a missing hour from an older or newer file. “Latest hour” is the alternative: each delivery hour may use a different eligible publication. January 2026 is GMT, so local time and UTC match. Timestamps are still converted with `Europe/London`.
-
-`error = forecast − actual`. Positive means overforecast. MAE, RMSE, and bias are computed on scored hours only, in MW, with `Decimal`. WAPE is secondary and is undefined if the actual sum is zero. MAPE is not used. Missing, conflicting, or implausible rows (below 0 MW or above 50,000 MW) stay out of the metrics. A zero is a real value.
-
-None of these metrics is a volume to buy. Demand and the existing contract position are outside the assignment’s data.
-
-## Architecture
-
-Read the diagram from top to bottom. The top half calls Elexon once and writes the snapshot. The bottom half is what a page view does. A desk request never calls Elexon.
-
-```mermaid
-flowchart TB
-  subgraph src ["1 · Elexon BMRS, ingest only"]
-    direction LR
-    W["WINDFOR<br/>hourly forecast MW<br/>publishTime"]
-    F["FUELHH WIND<br/>half-hour average MW"]
-  end
-
-  subgraph ing ["2 · Ingest command"]
-    direction LR
-    C["client.py<br/>public stream<br/>retries, no API key"]
-    I["ingest.py<br/>one day per request<br/>coverage check"]
-  end
-
-  subgraph snap ["3 · Committed snapshot"]
-    direction LR
-    GZ["windfor.jsonl.gz<br/>19,272 rows"]
-    FA["fuelhh.jsonl.gz<br/>1,488 rows<br/>31 days × 48"]
-    M["manifest.json<br/>snapshot 8e87d9346bc99a87<br/>BMRS licence"]
-  end
-
-  subgraph boot ["4 · Process start, six evaluations"]
-    direction TB
-    L["store.py<br/>load gzip, check checksum"]
-    S["selection.py<br/>publishTime &lt;= cutoff<br/>one file, or latest hour<br/>a later file is reported, not scored"]
-    EV["evaluate.py<br/>mean of the two half-hours<br/>error = forecast minus actual<br/>missing, conflict, or above 50,000 MW excluded"]
-    K["metrics.py<br/>Decimal MAE, RMSE, bias, WAPE"]
-    MEM["Kept in memory<br/>09:20, 09:50, 15:30<br/>× one file and latest hour"]
-  end
-
-  subgraph view ["5 · Each page view"]
-    direction LR
-    UI["React desk<br/>date, cutoff, strategy"]
-    R["GET /api/v1/evaluation"]
-  end
-
-  TST["test_snapshot.py<br/>locks 744 hours, MAE 2,038.91<br/>and midnight: 15,834 vs 14,602 and 14,311"]
-
-  W --> C
-  F --> C
-  C --> I
-  I --> GZ
-  I --> FA
-  I --> M
-  GZ --> L
-  FA --> L
-  M --> L
-  L --> S --> EV --> K --> MEM
-  UI --> R --> MEM
-  MEM --> UI
-  MEM -.-> TST
-
-  classDef source fill:#e7f0ea,stroke:#1f4d3a,color:#1a1916
-  classDef built fill:#f3efe6,stroke:#5e5a53,color:#1a1916
-  classDef live fill:#fffcf8,stroke:#1a1916,color:#1a1916
-  classDef proof fill:#f8ece8,stroke:#9a4030,color:#1a1916
-  class W,F source
-  class C,I,GZ,FA,M built
-  class L,S,EV,K,MEM,UI,R live
-  class TST proof
+```text
+.
+├── app.py                     Vercel imports this; it re-exports the FastAPI app
+├── pyproject.toml             package metadata and the Vercel entrypoint
+├── requirements.txt           runtime pins, including tzdata for Europe/London
+├── requirements-dev.txt       pytest
+├── vercel.json                frontend build, snapshot path, static desk path
+├── Dockerfile                 production image: API and built desk on one port
+├── Dockerfile.dev             API image used by Compose, with reload
+├── docker-compose.yml         API on 8000, Vite on 5173
+├── .env.example               SNAPSHOT_PATH, STATIC_DIR, Elexon URL, optional key, PORT
+├── .python-version            3.12
+├── README.md
+├── backend/
+│   ├── app/
+│   │   ├── main.py            create the app, load the snapshot, serve the desk
+│   │   ├── config.py          January window, cutoffs, paths
+│   │   ├── log_config.py      JSON request logs, no response bodies
+│   │   ├── api/routes.py      /api/v1/health, /meta, /evaluation
+│   │   ├── domain/
+│   │   │   ├── time.py        London and UTC, including the DST edge days
+│   │   │   ├── selection.py   publishTime <= cutoff; one file or latest hour
+│   │   │   ├── alignment.py   pair the two FUELHH half hours
+│   │   │   ├── metrics.py     MAE, RMSE, bias, WAPE, quantiles
+│   │   │   ├── evaluate.py    join a decision day and score it
+│   │   │   └── models.py      wire records and API models
+│   │   ├── elexon/
+│   │   │   ├── client.py      public stream client, retries, optional API key
+│   │   │   └── ingest.py      day-sized download, coverage checks, snapshot write
+│   │   └── snapshot/store.py  gzipped JSONL, checksums, six precomputed evaluations
+│   └── tests/
+│       ├── test_time.py
+│       ├── test_evaluate.py   recorded 15 January hour and the selection rules
+│       ├── test_client.py     retry, HTTP 400, malformed JSON
+│       ├── test_api.py
+│       ├── test_snapshot.py   locks the 744-hour January totals
+│       └── fixtures/recorded_2026_01_15.json
+├── data/snapshot/
+│   ├── windfor.jsonl.gz       19,272 forecast rows
+│   ├── fuelhh.jsonl.gz        1,488 half-hour WIND rows
+│   └── manifest.json          snapshot 8e87d9346bc99a87 and the BMRS licence
+├── frontend/
+│   ├── index.html
+│   ├── package.json
+│   ├── vite.config.ts         proxies /api to the Python process in development
+│   ├── public/favicon.svg
+│   └── src/
+│       ├── main.tsx
+│       ├── App.tsx            loads meta and evaluation and holds the page together
+│       ├── components/        decision bar, verdict, generation chart, month strip,
+│       │                      error distribution, interval table, assumption panel
+│       ├── hooks/             URL state, reduced motion, count-up
+│       ├── lib/               API client, types, formatting, scales
+│       ├── styles/            tokens.css and desk.css
+│       └── test/desk.test.tsx
+└── docs/
+    ├── VIDEO_SCRIPT.md
+    └── decision-2026-01-14.png
 ```
 
-If the snapshot is missing, `/api/v1/health` returns 503 and the desk shows an unavailable state. No synthetic series is substituted.
+`.venv/`, `frontend/node_modules/`, and `frontend/dist/` are created locally and are not committed.
 
-- `GET /api/v1/health`
-- `GET /api/v1/meta`
-- `GET /api/v1/evaluation?cutoff=09:20&strategy=single_vintage`
+## How to start the application
 
-`cutoff` is one of `09:20`, `09:50`, `15:30`. `strategy` is `single_vintage` or `latest_interval`.
+Open [https://northline-ruby.vercel.app/](https://northline-ruby.vercel.app/).
 
-## Directory
-
-- `backend/app/main.py` — application, request log, static desk
-- `backend/app/config.py` — environment and the January window
-- `backend/app/api/routes.py` — health, meta, evaluation
-- `backend/app/elexon/client.py` — stream client, retries, no required key
-- `backend/app/elexon/ingest.py` — day-chunked download and coverage checks
-- `backend/app/domain/time.py` — London and UTC
-- `backend/app/domain/selection.py` — vintage rule
-- `backend/app/domain/alignment.py` — half-hour pairing
-- `backend/app/domain/metrics.py` — MAE, RMSE, bias, WAPE, quantiles
-- `backend/app/domain/evaluate.py` — join and score
-- `backend/app/snapshot/store.py` — gzipped JSONL, checksums, precomputed evaluations
-- `backend/tests/` — selection, metrics, client failures, API contract, snapshot lock
-- `data/snapshot/` — `windfor.jsonl.gz`, `fuelhh.jsonl.gz`, `manifest.json`
-- `frontend/src/` — the desk, charts, table, and assumption panel
-- `Dockerfile` — production image
-- `docker-compose.yml` — API on port 8000 and Vite on port 5173
-- `docs/VIDEO_SCRIPT.md` — the ten-minute recording outline
-
-## Local setup
-
-From the repository root, with Python 3.12:
+To run it locally, use Python 3.12 from the repository root:
 
 ```text
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements-dev.txt
-python -m pytest
 .venv\Scripts\python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000
 ```
 
@@ -179,21 +114,13 @@ npm run dev
 
 Open `http://127.0.0.1:5173/?date=2026-01-14&cutoff=09:20`. The Vite server proxies `/api` to port 8000.
 
-Refresh the snapshot from Elexon, replacing it only after the coverage checks pass:
-
-```text
-python -m backend.app.elexon.ingest
-```
-
-## Docker
-
-Development, with hot reload:
+Docker, with the API on port 8000 and Vite on port 5173:
 
 ```text
 docker compose up --build
 ```
 
-Production image, API and built desk on one origin:
+Production image, API and built desk together:
 
 ```text
 docker build -t northline .
@@ -202,17 +129,103 @@ docker run --rm -p 8000:8000 northline
 
 Open `http://127.0.0.1:8000/?date=2026-01-14&cutoff=09:20`.
 
-## Environment
+Refresh the snapshot from Elexon, replacing it only after the coverage checks pass:
+
+```text
+python -m backend.app.elexon.ingest
+```
 
 | Variable | Purpose |
 | --- | --- |
 | `SNAPSHOT_PATH` | Snapshot directory. Default `data/snapshot`. |
-| `STATIC_DIR` | Built desk. Empty in local API-only mode. |
+| `STATIC_DIR` | Built desk. Empty when the API is run without the built frontend. |
 | `ELEXON_BASE_URL` | Insights API base. Used only by the ingest command. |
 | `ELEXON_API_KEY` | Optional. Sent as `X-Api-Key` only when set. The public API did not require one. |
-| `PORT` | Set by the production container host. |
+| `PORT` | Listen port in the production container. |
 
-Copy `.env.example` if you want a local file. Do not commit secrets. This project has none.
+Copy `.env.example` for a local file.
+
+## Stack
+
+- Python 3.12, FastAPI, Pydantic v2, httpx
+- React 19, TypeScript, Vite, TanStack Query
+- Docker Compose for local development, and a production image that serves the built desk and the API together
+
+## Data
+
+Contains BMRS data © Elexon Limited copyright and database right 2026.
+[BMRS data licence](https://www.elexon.co.uk/bsc/data/balancing-mechanism-reporting-agent/copyright-licence-bmrs-data/).
+
+The Insights API is public. These calls used no API key. Base URL: `https://data.elexon.co.uk/bmrs/api/v1`.
+
+- Actuals: `GET /datasets/FUELHH/stream` with `fuelType=WIND`. `generation` is average MW over the half hour. The delivery window 2 January–1 February 2026 returned 1,488 rows, 48 settlement periods a day.
+- Forecasts: `GET /datasets/WINDFOR/stream`, filtered by `publishTime`. Each value is one hourly MW figure. There is no settlement period on the stream record.
+
+WINDFOR is hourly. FUELHH is half-hourly. The scored actual for an hour is the mean of the two half hours starting at that hour and 30 minutes later. The forecast is drawn flat across that hour. It is not copied onto 48 separate samples.
+
+In this January extract the files are at 02:30, 04:30, 07:30, 09:30, 11:30, 15:30, 18:30 and 22:30 UTC. On 15 January the 11:30 file is replaced by one at 12:25 UTC. Selection uses `publishTime`.
+
+## Decision rule
+
+A decision on London date D procures delivery D+1. A forecast is eligible when `publishTime <= cutoff`.
+
+- `09:20` is the default: EPEX SPOT GB 60-minute auction. The vintage is 07:30.
+- `09:50` is the Nord Pool N2EX gate. The 09:30 file becomes eligible.
+- `15:30` is the EPEX GB 30-minute auction. A file stamped exactly 15:30 is included.
+
+The default strategy keeps one publication, the latest file at or before the cutoff, and does not fill a missing hour from an older or newer file. “Latest hour” lets each delivery hour use a different eligible publication.
+
+`error = forecast − actual`. Positive means overforecast. MAE, RMSE, and bias are computed on scored hours only. WAPE is undefined if the actual sum is zero. Missing, conflicting, or implausible rows (below 0 MW or above 50,000 MW) stay out of the metrics. A zero is a real value. These metrics are not a volume to buy.
+
+```text
+GET /api/v1/health
+GET /api/v1/meta
+GET /api/v1/evaluation?cutoff=09:20&strategy=single_vintage
+```
+
+`cutoff` is `09:20`, `09:50`, or `15:30`. `strategy` is `single_vintage` or `latest_interval`. If the snapshot is missing, health returns 503.
+
+```mermaid
+flowchart TB
+  subgraph src ["1 · Elexon BMRS, ingest only"]
+    direction LR
+    W["WINDFOR<br/>hourly forecast MW"]
+    F["FUELHH WIND<br/>half-hour average MW"]
+  end
+
+  subgraph ing ["2 · Ingest command"]
+    direction LR
+    C["client.py"]
+    I["ingest.py"]
+  end
+
+  subgraph snap ["3 · Snapshot"]
+    direction LR
+    GZ["windfor.jsonl.gz"]
+    FA["fuelhh.jsonl.gz"]
+    M["manifest.json"]
+  end
+
+  subgraph boot ["4 · Startup"]
+    L["store.py"] --> S["selection.py"] --> EV["evaluate.py"] --> K["metrics.py"]
+  end
+
+  subgraph view ["5 · Page view"]
+    UI["React desk"] --> R["GET /api/v1/evaluation"]
+  end
+
+  W --> C
+  F --> C
+  C --> I
+  I --> GZ
+  I --> FA
+  I --> M
+  GZ --> L
+  FA --> L
+  M --> L
+  R --> K
+  K --> UI
+```
 
 ## Tests
 
@@ -221,45 +234,6 @@ python -m pytest
 cd frontend && npm test
 ```
 
-Backend tests cover London/UTC conversion, the spring-forward and fall-back days, a publication after the cutoff, mixed vintages, conflicting duplicates, a missing forecast, zero generation, the 31 January decision for 1 February delivery, retries, malformed JSON, and the recorded 15 January hour. The snapshot test locks the 744-hour January totals above.
-
-## Deployment
-
-Vercel is the intended host: one Python function plus the built desk, with the snapshot inside the project. Hobby functions are not the sleeping Eco dyno Heroku now charges for.
-
-```text
-npx vercel --prod
-```
-
-`pyproject.toml` sets the Vercel entrypoint to `backend.app.main:app`. `vercel.json` builds the frontend, points `STATIC_DIR` at `frontend/dist`, and includes the snapshot and the built desk in the function bundle.
-
-On 24 October 2026 the production container was checked in a fresh Chrome profile. The public check is still waiting on an account:
-
-```text
-npx vercel login
-npx vercel --prod
-```
-
-Then open `/api/v1/health` and `/?date=2026-01-14&cutoff=09:20` in a private window. Health should name snapshot `8e87d9346bc99a87`. Heroku can run the same image on a Basic dyno if Vercel is unavailable. An Eco dyno sleeps after 30 minutes and is a poor review link. No Heroku CLI is installed here.
-
-## Video
-
-The submission needs an unlisted YouTube video of at most 10 minutes: five for the client, five for the technical review. The outline, with what to click, is in [docs/VIDEO_SCRIPT.md](docs/VIDEO_SCRIPT.md). Record it from the deployed desk, or from the local production container if the deploy is still pending. Do not describe a control that was removed.
-
 ## AI tools
 
-Cursor’s coding agent, Grok 4.7, was used to research the Elexon and auction sources, retrieve and check the January extracts, and implement the application, tests, and this README. The forecast rule, the hourly alignment, and the metrics were then locked against the retrieved Elexon rows rather than taken from the model’s estimates.
-
-## Limitations
-
-- National metered wind only. No demand, price, or embedded-wind series.
-- The hourly WINDFOR point is treated as the forecast of average MW over the following hour. The field name does not say that; the wind page describes an hourly forecast, and the outturn is a half-hour average.
-- The webpage publication clock does not match January `publishTime` values.
-- The 14 January error is not the January result. The month table above is the January result for the 09:20 rule.
-- A file stamped at the exact 15:30 gate is treated as available.
-- The Nord Pool 09:50 source consulted was last updated in 2022 and says GMT. That is unambiguous in January and was not re-proved for summer.
-- There is no scheduled refresh. Ingest is a command.
-
-## Further work
-
-A scheduled ingest, a private deployment, and alerting when a 07:30 file does not cover the next delivery day. Not a second data source, and not a price model.
+Cursor’s coding agent, Grok 4.7, was used to research the Elexon and auction sources, retrieve and check the January extracts, and implement the application, tests, and this README. The forecast rule, the hourly alignment, and the metrics were locked against the retrieved Elexon rows.
