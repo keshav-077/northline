@@ -1,0 +1,54 @@
+:root {
+  --bg: #f3f1ec;
+  --card: #fffcf8;
+  --panel: #fffcf8;
+  --ink: #1a1916;
+  --ink2: #5e5a53;
+  --muted: #5e5a53;
+  --line: #e4dfd6;
+  --g: #1f4d3a;
+  --forecast: #1f4d3a;
+  --c: #2c3338;
+  --actual: #2c3338;
+  --r: #9a4030;
+  --over: #9a4030;
+  --under: #1f4d3a;
+  --warning: #8a5a12;
+  --e: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --sans: "IBM Plex Sans", "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, monospace;
+  color: var(--ink);
+  background: var(--bg);
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+* { box-sizing: border-box; }
+
+html { scroll-padding-top: 70px; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg);
+  border-top: 3px solid var(--g);
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+button, input, select { font: inherit; color: inherit; }
+
+button { cursor: pointer; }
+
+:focus-visible {
+  outline: 2px solid var(--g);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

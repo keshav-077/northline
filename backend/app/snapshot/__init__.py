@@ -1,0 +1,1 @@
+"""Persisted Elexon snapshot."""

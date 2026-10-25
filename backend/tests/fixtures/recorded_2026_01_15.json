@@ -1,0 +1,42 @@
+{
+  "label": "Recorded fragment copied from the Elexon WINDFOR 2026-01-14T07:30:00Z file and FUELHH WIND outturn for delivery 2026-01-15. Retrieved 2026-10-24. Not synthetic.",
+  "decision_date": "2026-01-14",
+  "vintage_utc": "2026-01-14T07:30:00Z",
+  "excluded_vintage_utc": "2026-01-14T09:30:00Z",
+  "hour_00": {
+    "forecast_mw": 15834,
+    "excluded_forecast_mw": 15828,
+    "actual_half_hours_mw": [14602, 14311],
+    "actual_hour_mw": "14456.5",
+    "error_mw": "1377.5"
+  },
+  "series": [
+    {"hour": "00:00", "forecast_mw": 15834, "actual_hour_mw": "14456.5"},
+    {"hour": "01:00", "forecast_mw": 15478, "actual_hour_mw": "14358.0"},
+    {"hour": "02:00", "forecast_mw": 15066, "actual_hour_mw": "14368.0"},
+    {"hour": "03:00", "forecast_mw": 14655, "actual_hour_mw": "14139.0"},
+    {"hour": "04:00", "forecast_mw": 14497, "actual_hour_mw": "13807.0"},
+    {"hour": "05:00", "forecast_mw": 14419, "actual_hour_mw": "13546.5"},
+    {"hour": "06:00", "forecast_mw": 14017, "actual_hour_mw": "13387.0"},
+    {"hour": "07:00", "forecast_mw": 13411, "actual_hour_mw": "13169.0"},
+    {"hour": "08:00", "forecast_mw": 12931, "actual_hour_mw": "12510.5"},
+    {"hour": "09:00", "forecast_mw": 12576, "actual_hour_mw": "12193.0"},
+    {"hour": "10:00", "forecast_mw": 12081, "actual_hour_mw": "10555.0"},
+    {"hour": "11:00", "forecast_mw": 11578, "actual_hour_mw": "9765.5"},
+    {"hour": "12:00", "forecast_mw": 11049, "actual_hour_mw": "9790.5"},
+    {"hour": "13:00", "forecast_mw": 10378, "actual_hour_mw": "8807.0"},
+    {"hour": "14:00", "forecast_mw": 9619, "actual_hour_mw": "8324.0"},
+    {"hour": "15:00", "forecast_mw": 9050, "actual_hour_mw": "8545.0"},
+    {"hour": "16:00", "forecast_mw": 8864, "actual_hour_mw": "8460.5"},
+    {"hour": "17:00", "forecast_mw": 8870, "actual_hour_mw": "8135.0"},
+    {"hour": "18:00", "forecast_mw": 8962, "actual_hour_mw": "7632.5"},
+    {"hour": "19:00", "forecast_mw": 9130, "actual_hour_mw": "7615.0"},
+    {"hour": "20:00", "forecast_mw": 9059, "actual_hour_mw": "7387.5"},
+    {"hour": "21:00", "forecast_mw": 9049, "actual_hour_mw": "7783.5"},
+    {"hour": "22:00", "forecast_mw": 9091, "actual_hour_mw": "7558.0"},
+    {"hour": "23:00", "forecast_mw": 8966, "actual_hour_mw": "7332.5"}
+  ],
+  "mae_mw": "1041.83",
+  "bias_mw": "1041.83",
+  "rmse_mw": "1149.26"
+}
